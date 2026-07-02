@@ -1,0 +1,7 @@
+---
+# Manage node_exporter via the Ubuntu apt package (cleanest to keep idempotent).
+# The Ubuntu package ships the binary AND a systemd unit both named
+# `prometheus-node-exporter`, listening on :9100 by default.
+node_exporter_package: prometheus-node-exporter
+node_exporter_service: prometheus-node-exporter
+node_exporter_port: 9100

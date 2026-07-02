@@ -1,0 +1,13 @@
+---
+# Placeholder role — the deployment target isn't decided yet.
+#
+# Tell Claude what these Pi's should host (a Docker service? a systemd unit?
+# something else) and this becomes a real role. It is intentionally NOT wired
+# into playbooks/site.yml until then.
+#
+# Reminder for a Docker-based app on this setup: the WSL Docker daemon has
+# bridge networking disabled, so anything you prototype locally must use
+# network_mode: host. (The Pi's are separate hosts and may differ — check.)
+- name: app role is a placeholder — nothing to do yet
+  ansible.builtin.debug:
+    msg: "roles/app is a skeleton. Define the app, then add it to playbooks/site.yml."

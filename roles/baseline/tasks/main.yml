@@ -1,0 +1,30 @@
+---
+# Common baseline for every Pi. Deliberately builtin-only (no extra Ansible
+# collections needed) so it runs on a bare ansible-core install.
+
+- name: Install baseline packages
+  ansible.builtin.apt:
+    name: "{{ baseline_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Read current timezone
+  ansible.builtin.command: timedatectl show -p Timezone --value
+  register: baseline_current_tz
+  changed_when: false
+
+- name: Set timezone
+  ansible.builtin.command: "timedatectl set-timezone {{ baseline_timezone }}"
+  when: baseline_current_tz.stdout != baseline_timezone
+
+- name: Enable & start unattended-upgrades
+  ansible.builtin.service:
+    name: unattended-upgrades
+    state: started
+    enabled: true
+  when: baseline_enable_unattended_upgrades | bool
+
+# NOTE: no SSH hardening here on purpose — auth is still by password, so
+# disabling PasswordAuthentication now would lock you out. Add it as an
+# opt-in task only after keys are deployed (see README "Next steps").

@@ -1,0 +1,29 @@
+---
+# Ensure node_exporter is installed and running so the WSL Prometheus can scrape
+# :9100. Uses the apt package for clean lifecycle management.
+#
+# CAVEAT (from prior recon): the Pi's already have *some* node_exporter on :9100,
+# installed manually under a unit whose name is NOT `prometheus-node-exporter`.
+# If that manual install still owns :9100, the apt service below will fail to
+# bind the port. Reconcile first — identify and stop/remove the manual unit, or
+# set node_exporter_* to point at whatever is actually there. Run this role in
+# --check --diff first.
+
+- name: Install node_exporter
+  ansible.builtin.apt:
+    name: "{{ node_exporter_package }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Ensure node_exporter service is enabled and running
+  ansible.builtin.service:
+    name: "{{ node_exporter_service }}"
+    state: started
+    enabled: true
+
+- name: Confirm node_exporter is listening
+  ansible.builtin.wait_for:
+    port: "{{ node_exporter_port }}"
+    host: 127.0.0.1
+    timeout: 10

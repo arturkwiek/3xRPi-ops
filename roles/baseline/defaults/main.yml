@@ -1,0 +1,12 @@
+---
+baseline_timezone: Europe/Warsaw
+
+baseline_packages:
+  - vim
+  - htop
+  - curl
+  - ca-certificates
+  - unattended-upgrades
+  - update-notifier-common   # provides /var/run/reboot-required
+
+baseline_enable_unattended_upgrades: true

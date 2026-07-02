@@ -1,0 +1,10 @@
+---
+# Standing configuration for the whole Pi fleet.
+#   Run from the repo root:  ansible-playbook playbooks/site.yml
+# ansible.cfg already turns on the SSH-password and sudo-password prompts.
+- name: Baseline + monitoring for the RPi fleet
+  hosts: rpi
+  become: true
+  roles:
+    - baseline
+    - node_exporter
