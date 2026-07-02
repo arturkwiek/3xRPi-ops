@@ -1,7 +1,10 @@
 ---
-# Manage node_exporter via the Ubuntu apt package (cleanest to keep idempotent).
-# The Ubuntu package ships the binary AND a systemd unit both named
-# `prometheus-node-exporter`, listening on :9100 by default.
-node_exporter_package: prometheus-node-exporter
-node_exporter_service: prometheus-node-exporter
+# The Pi's run node_exporter installed manually from upstream: the official
+# binary at /usr/local/bin/node_exporter (v1.11.1), managed by a systemd unit
+# named `node_exporter` (NOT the apt `prometheus-node-exporter`). The upstream
+# build is newer than the apt package, so we ADOPT it rather than replace it:
+# this role only ensures the existing service is up and listening. It does not
+# install or own the binary/unit — that stays as it was set up by hand.
+# (Recon on 2026-07-02 confirmed all three hosts.)
+node_exporter_service: node_exporter
 node_exporter_port: 9100

@@ -1,20 +1,14 @@
 ---
-# Ensure node_exporter is installed and running so the WSL Prometheus can scrape
-# :9100. Uses the apt package for clean lifecycle management.
+# Ensure the upstream node_exporter is running so the WSL Prometheus can scrape
+# :9100. The exporter is installed manually (official binary at
+# /usr/local/bin/node_exporter, v1.11.1, unit `node_exporter`), which is NEWER
+# than Ubuntu's apt `prometheus-node-exporter`. So this role ADOPTS the existing
+# service instead of installing a package — no port conflict, no downgrade, no
+# monitoring gap. See defaults/main.yml and README for the reasoning.
 #
-# CAVEAT (from prior recon): the Pi's already have *some* node_exporter on :9100,
-# installed manually under a unit whose name is NOT `prometheus-node-exporter`.
-# If that manual install still owns :9100, the apt service below will fail to
-# bind the port. Reconcile first — identify and stop/remove the manual unit, or
-# set node_exporter_* to point at whatever is actually there. Run this role in
-# --check --diff first.
-
-- name: Install node_exporter
-  ansible.builtin.apt:
-    name: "{{ node_exporter_package }}"
-    state: present
-    update_cache: true
-    cache_valid_time: 3600
+# If you later want Ansible to fully own the binary + unit (reproducible from
+# code), that's the "full IaC" path: get_url the release, template the systemd
+# unit, notify a restart handler. Not done here on purpose.
 
 - name: Ensure node_exporter service is enabled and running
   ansible.builtin.service:

@@ -23,7 +23,7 @@ playbooks/
   update.yml               apt update + safe upgrade (+ opt-in reboot)
 roles/
   baseline/                packages, timezone, unattended-upgrades
-  node_exporter/           ensure :9100 exporter installed & running
+  node_exporter/           ensure existing :9100 exporter is up (adopts upstream install)
   app/                     PLACEHOLDER — deployment target undecided
 ```
 
@@ -70,13 +70,22 @@ ansible-playbook playbooks/update.yml -e reboot_if_required=true
 You'll be prompted for `SSH password:` and `BECOME password:` (both are `mwd`'s
 password / sudo password on the Pi's).
 
-### node_exporter caveat
+### node_exporter — adopts the existing upstream install
 
-The Pi's already run *some* node_exporter on :9100 from a manual install whose
-systemd unit is **not** `prometheus-node-exporter`. The `node_exporter` role
-targets the apt package/unit of that name — if the manual install still owns the
-port, the apt service won't bind. **Run `--check --diff` first** and reconcile
-(identify/stop the manual unit) before applying. See `roles/node_exporter/tasks/main.yml`.
+Recon (2026-07-02) settled what's actually on the Pi's: the official upstream
+node_exporter **v1.11.1**, binary at `/usr/local/bin/node_exporter`, run by a
+systemd unit named **`node_exporter`** (not the apt `prometheus-node-exporter`),
+enabled and listening on :9100 on all three hosts.
+
+That upstream build is *newer* than Ubuntu's apt package, so migrating to apt
+would be a downgrade plus a monitoring gap for no gain. The role therefore
+**adopts** the existing service: it only ensures `node_exporter` is started,
+enabled, and listening — it does **not** install a package or own the
+binary/unit. A clean run is all `ok` / no `changed`.
+
+If you ever want Ansible to fully own the exporter (reproducible from code),
+that's the "full IaC" path — `get_url` the release, template the systemd unit,
+restart via a handler. Intentionally not done here.
 
 ## Environment constraints (baked into how this repo works)
 
