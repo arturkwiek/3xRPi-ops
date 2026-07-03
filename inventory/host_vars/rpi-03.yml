@@ -1,0 +1,11 @@
+---
+# Profil obciążenia dla demo monitoringu — malina "dyskowo-sieciowa".
+# UWAGA na kartę SD: hdd zapisuje pliki tymczasowe. Trzymamy małe hdd_bytes
+# i krótki czas (duration w playbooku), żeby nie zużywać niepotrzebnie SD.
+load_profile:
+  cpu: 1            # tło CPU
+  vm: 1             # tło pamięci
+  vm_bytes: "15%"
+  hdd: 2            # 2 workery I/O na dysku (widoczne w metrykach dysku)
+  hdd_bytes: "256M" # mały plik na worker -> oszczędzamy kartę SD
+  net: 4            # mocniejszy ruch na gniazdach

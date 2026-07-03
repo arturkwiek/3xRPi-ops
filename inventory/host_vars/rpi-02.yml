@@ -1,0 +1,10 @@
+---
+# Profil obciążenia dla demo monitoringu — malina "pamięciowa".
+# Dwa workery po 25% RAM = ~50% pamięci zajęte (bezpieczny zapas do OOM).
+load_profile:
+  cpu: 1            # tło CPU
+  vm: 2             # 2 workery pamięci...
+  vm_bytes: "25%"   # ...każdy 25% RAM -> razem ~50%
+  hdd: 0            # bez obciążania karty SD
+  hdd_bytes: "0"
+  net: 1            # lekki ruch na gniazdach

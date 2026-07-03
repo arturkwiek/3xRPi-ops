@@ -1,0 +1,12 @@
+---
+# Profil obciążenia dla demo monitoringu — malina "procesorowa".
+# Czytany przez playbooks/stress.yml. Wartość 0 = dany zasób wyłączony.
+# UWAGA: w stress-ng liczba 0 oznacza "tyle workerów, ile rdzeni" — dlatego
+# playbook pomija flagę, gdy wartość wynosi 0 (patrz komentarz w stress.yml).
+load_profile:
+  cpu: 4            # 4 workery CPU -> Pi ma 4 rdzenie, więc ~100% CPU
+  vm: 1             # 1 worker pamięci...
+  vm_bytes: "15%"   # ...alokuje 15% RAM (lekko)
+  hdd: 0            # bez obciążania karty SD
+  hdd_bytes: "0"
+  net: 1            # lekki ruch na gniazdach (loopback)

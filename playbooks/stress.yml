@@ -1,0 +1,46 @@
+---
+# Zróżnicowane obciążenie floty RPi — demo dla monitoringu (node_exporter).
+#
+#   ansible-playbook playbooks/stress.yml                 # 5 minut (domyślnie)
+#   ansible-playbook playbooks/stress.yml -e duration=120 # 2 minuty
+#
+# Każda malina dostaje inny profil z inventory/host_vars/<host>.yml, więc na
+# wykresach Grafany widać trzy różne przebiegi. stress-ng sam się kończy po
+# `duration` sekund. Ręczne zatrzymanie wcześniej:
+#   ansible rpi -b -a "pkill -f stress-ng"
+- name: Zróżnicowane obciążenie floty (demo dla monitoringu)
+  hosts: rpi
+  become: true
+  vars:
+    duration: 300   # czas obciążenia w sekundach; nadpisz przez -e duration=...
+  tasks:
+    - name: Zainstaluj stress-ng
+      ansible.builtin.apt:
+        name: stress-ng
+        state: present
+        update_cache: true
+
+    # stress-ng traktuje "0" jako "tyle workerów, ile rdzeni" — więc żeby móc
+    # naprawdę WYŁĄCZYĆ zasób, składamy komendę warunkowo i pomijamy flagę,
+    # gdy wartość w profilu = 0.
+    - name: Uruchom stress-ng wg profilu hosta (async, fire-and-forget)
+      ansible.builtin.command:
+        cmd: >-
+          stress-ng
+          {% if load_profile.cpu | int > 0 %} --cpu {{ load_profile.cpu }}{% endif %}
+          {% if load_profile.vm | int > 0 %} --vm {{ load_profile.vm }} --vm-bytes {{ load_profile.vm_bytes }}{% endif %}
+          {% if load_profile.hdd | int > 0 %} --hdd {{ load_profile.hdd }} --hdd-bytes {{ load_profile.hdd_bytes }} --temp-path /tmp{% endif %}
+          {% if load_profile.net | int > 0 %} --sock {{ load_profile.net }}{% endif %}
+          --timeout {{ duration }}s
+      # poll:0 = odpal i wróć; obciążenie leci w tle na malinie przez `duration`
+      async: "{{ duration | int + 30 }}"
+      poll: 0
+
+    - name: Pokaż profil zastosowany na hoście
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }} przez {{ duration }}s →
+          cpu={{ load_profile.cpu }},
+          vm={{ load_profile.vm }} ({{ load_profile.vm_bytes }}),
+          hdd={{ load_profile.hdd }} ({{ load_profile.hdd_bytes }}),
+          net={{ load_profile.net }}

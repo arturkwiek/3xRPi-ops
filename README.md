@@ -18,9 +18,11 @@ ansible.cfg                inventory + password-prompt defaults
 inventory/
   hosts.ini                the 3 Pi's, group [rpi]
   group_vars/rpi.yml       ansible_user, python interpreter
+  host_vars/rpi-0*.yml     per-host load profiles for the stress demo
 playbooks/
   site.yml                 baseline + node_exporter (standing config)
   update.yml               apt update + safe upgrade (+ opt-in reboot)
+  stress.yml               differentiated CPU/RAM/IO/net load per host (monitoring demo)
 roles/
   baseline/                packages, timezone, unattended-upgrades
   node_exporter/           ensure existing :9100 exporter is up (adopts upstream install)
@@ -65,7 +67,16 @@ ansible-playbook playbooks/site.yml
 # patch the fleet
 ansible-playbook playbooks/update.yml
 ansible-playbook playbooks/update.yml -e reboot_if_required=true
+
+# monitoring demo: put a DIFFERENT load on each Pi for 5 min (async, self-stops)
+ansible-playbook playbooks/stress.yml
+ansible-playbook playbooks/stress.yml -e duration=120   # shorter
+ansible rpi -b -a "pkill -f stress-ng"                  # stop early
 ```
+
+Each Pi gets its own load profile from `inventory/host_vars/rpi-0*.yml`, so the
+node_exporter graphs show three distinct traces. Full walkthrough:
+[docs/demo-obciazenie.md](docs/demo-obciazenie.md).
 
 You'll be prompted for `SSH password:` and `BECOME password:` (both are `mwd`'s
 password / sudo password on the Pi's).

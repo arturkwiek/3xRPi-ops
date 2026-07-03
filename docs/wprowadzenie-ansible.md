@@ -433,6 +433,10 @@ Kolejność nauki, którą polecam — każdy krok bazuje na Twoich plikach:
 5. **Poznaj handlery** — wzorzec "zmień plik konfiguracyjny → zrestartuj
    usługę, ale tylko jeśli coś się zmieniło". Naturalny następny temat.
 
+Praktyczne rozszerzenie tego wprowadzenia: [demo-obciazenie.md](demo-obciazenie.md)
+— pokazuje `host_vars` (zmienne per host), składanie komendy przez `{% if %}` i
+tryb `async`/`poll: 0`, na przykładzie różnicowania obciążenia malin.
+
 Oficjalna dokumentacja (bardzo dobra): <https://docs.ansible.com/ansible/latest/>
 
 ---
