@@ -100,17 +100,23 @@ To jest lista maszyn, którymi zarządzasz:
 
 ```ini
 [rpi]
-rpi-01 ansible_host=192.168.0.212
-rpi-02 ansible_host=192.168.0.213
-rpi-03 ansible_host=192.168.0.145
+rpi-01 ansible_host=192.168.0.102
+rpi-02 ansible_host=192.168.0.106
 ```
 
 - `[rpi]` to **grupa**. Dzięki niej możesz powiedzieć "zrób coś na całej grupie
   rpi" zamiast wymieniać każdy host z osobna. To właśnie ta grupa, której użyłeś
   w komendzie `ansible rpi -m ping`.
 - `rpi-01` to **przyjazna nazwa** (alias). Nie musi być prawdziwym hostname.
-- `ansible_host=192.168.0.212` mówi Ansible, pod jaki adres IP faktycznie się
+- `ansible_host=192.168.0.102` mówi Ansible, pod jaki adres IP faktycznie się
   łączyć.
+
+> **Dlaczego alias i adres to dwie osobne rzeczy — praktyczny przykład.**
+> W sierpniu 2026 flota dostała nowe dzierżawy DHCP i wszystkie trzy adresy
+> w tym pliku przestały być aktualne. Playbooki nie wymagały żadnej zmiany —
+> poprawka dotyczyła wyłącznie `ansible_host`. Gdyby w rolach i playbookach
+> siedziały adresy IP zamiast aliasów, ta sama zmiana rozlałaby się po całym
+> repozytorium.
 
 > **Ćwiczenie do zrozumienia:** gdybyś dopisał drugą grupę, np. `[sensory]` z
 > jednym Pi, mógłbyś celować w nią osobno: `ansible sensory -m ping`.

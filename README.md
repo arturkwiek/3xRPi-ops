@@ -1,15 +1,26 @@
 # 3xRPi-ops — Ansible for the RPi fleet
 
-Config management for three Raspberry Pi hosts (Ubuntu Server) on the LAN.
+Config management for the Raspberry Pi fleet (Ubuntu) on the LAN.
 Separate from `~/3xRPi` (that repo is monitoring *docs*; this one is *ops*).
 
 ## Fleet
 
-| host   | IP            | user |
-|--------|---------------|------|
-| rpi-01 | 192.168.0.212 | mwd  |
-| rpi-02 | 192.168.0.213 | mwd  |
-| rpi-03 | 192.168.0.145 | mwd  |
+| host   | IP                    | user | MAC               |
+|--------|-----------------------|------|-------------------|
+| rpi-01 | 192.168.0.102         | mwd  | 88:a2:9e:27:38:7a |
+| rpi-02 | 192.168.0.106         | mwd  | 88:a2:9e:27:39:49 |
+| rpi-03 | *unknown — off-net*   | mwd  | —                 |
+
+**Addresses verified 2026-08-09.** The previous entries (`.212` / `.213` /
+`.145`) were dead — the fleet had picked up new DHCP leases. A TCP sweep of
+the whole subnet for ports 22 and 9100 found exactly two live machines;
+`rpi-03` is not present under any address and is commented out in the
+inventory. Add MAC-based DHCP reservations on the router or this drifts again.
+
+Hardware (read from node_exporter metrics): Raspberry Pi 5, 16 GB RAM,
+4 cores aarch64, Ubuntu 26.04 LTS, kernel `7.0.0-1016-raspi`. Both machines
+report the same hostname `MWDRPi` — cloned SD image, so do not use `hostname`
+to tell them apart.
 
 ## Layout
 
@@ -112,8 +123,11 @@ restart via a handler. Intentionally not done here.
 1. **Deploy SSH keys** (kills the password prompts, big quality-of-life win):
    ```bash
    ssh-keygen -t ed25519 -C "vision@Vision-DellLaPrv" -f ~/.ssh/id_ed25519 -N ""
-   for ip in 192.168.0.212 192.168.0.213 192.168.0.145; do ssh-copy-id mwd@$ip; done
+   for ip in 192.168.0.102 192.168.0.106; do ssh-copy-id mwd@$ip; done
    ```
+   Confirmed still outstanding on 2026-08-09: `~/.ssh` holds only
+   `known_hosts`, and `ssh -o BatchMode=yes mwd@…` returns
+   `Permission denied (publickey,password)` on both hosts.
    Then set `ask_pass = False` in `ansible.cfg` and point
    `ansible_ssh_private_key_file` at the key in `group_vars/rpi.yml`.
 2. Once on keys, add opt-in **SSH hardening** to the baseline role (disable
