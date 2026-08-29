@@ -1,0 +1,207 @@
+---
+# Give each cloned board an identity of its own, and a key-based login.
+# Builtin-only, like the rest of this project — no extra collections.
+
+# --------------------------------------------------------------- SSH key
+
+- name: Check that the public key exists on the control machine
+  ansible.builtin.stat:
+    path: "{{ fleet_admin_pubkey | expanduser }}"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  register: identity_pubkey
+
+- name: Fail early with an instruction rather than a stack trace
+  ansible.builtin.fail:
+    msg: >-
+      No public key at {{ fleet_admin_pubkey }}. Generate one on this machine
+      first: ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_rpi -C "3xRPi fleet"
+  when: not identity_pubkey.stat.exists
+  run_once: true
+
+- name: Ensure the admin account exists
+  ansible.builtin.user:
+    name: "{{ fleet_admin_user }}"
+    state: present
+    shell: /bin/bash
+    create_home: true
+  register: identity_user
+
+# The user module reports `home` when it touches the account, but not on every
+# path through it — fall back rather than fail on an undefined attribute.
+- name: Resolve the account's home directory
+  ansible.builtin.set_fact:
+    identity_home: "{{ identity_user.home | default('/home/' ~ fleet_admin_user, true) }}"
+
+- name: Ensure ~/.ssh exists with the right mode
+  ansible.builtin.file:
+    path: "{{ identity_home }}/.ssh"
+    state: directory
+    owner: "{{ fleet_admin_user }}"
+    group: "{{ fleet_admin_user }}"
+    mode: "0700"
+
+# lineinfile rather than ansible.posix.authorized_key: same result, no
+# collection dependency, and it leaves any other existing keys alone.
+- name: Install the fleet public key
+  ansible.builtin.lineinfile:
+    path: "{{ identity_home }}/.ssh/authorized_keys"
+    line: "{{ lookup('file', fleet_admin_pubkey | expanduser) }}"
+    state: present
+    create: true
+    owner: "{{ fleet_admin_user }}"
+    group: "{{ fleet_admin_user }}"
+    mode: "0600"
+
+- name: Make sure sshd accepts public keys
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^\s*#?\s*PubkeyAuthentication\s'
+    line: "PubkeyAuthentication yes"
+    state: present
+    validate: "sshd -t -f %s"
+  notify: reload sshd
+
+# Opt-in and off by default. Only flip it once you have logged in with the key
+# on every board — these machines are headless and Wi-Fi only, so a lockout
+# means fetching a monitor and a keyboard.
+- name: Disable password authentication
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^\s*#?\s*PasswordAuthentication\s'
+    line: "PasswordAuthentication no"
+    state: present
+    validate: "sshd -t -f %s"
+  when: fleet_disable_password_auth | bool
+  notify: reload sshd
+
+# --------------------------------------------------------------- hostname
+
+- name: Read the current static hostname
+  ansible.builtin.command: hostnamectl --static
+  register: identity_current_hostname
+  changed_when: false
+
+- name: Set the static hostname
+  ansible.builtin.command: "hostnamectl set-hostname {{ fleet_hostname }}"
+  when: identity_current_hostname.stdout != fleet_hostname
+  notify: reboot board
+
+- name: Point 127.0.1.1 at the new hostname
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1\s'
+    line: "127.0.1.1\t{{ fleet_hostname }}"
+    state: present
+
+# Ubuntu Server images carry cloud-init, which re-applies the image's hostname
+# on boot and would quietly undo the line above.
+- name: Detect cloud-init
+  ansible.builtin.stat:
+    path: /etc/cloud/cloud.cfg
+  register: identity_cloud_init
+
+- name: Stop cloud-init from resetting the hostname
+  ansible.builtin.copy:
+    dest: /etc/cloud/cloud.cfg.d/99-preserve-hostname.cfg
+    content: |
+      # Managed by 3xRPi-ops (roles/identity).
+      # Without this, cloud-init restores the hostname baked into the SD image
+      # on every boot, and the whole fleet goes back to being called MWDRPi.
+      preserve_hostname: true
+    owner: root
+    group: root
+    mode: "0644"
+  when: identity_cloud_init.stat.exists
+
+# ----------------------------------------------- clone leftovers: identity
+
+- name: Check whether this board has already been individualised
+  ansible.builtin.slurp:
+    src: "{{ fleet_identity_stamp }}"
+  register: identity_stamp_raw
+  failed_when: false
+  changed_when: false
+
+- name: Decide whether the guarded steps still need to run
+  ansible.builtin.set_fact:
+    identity_needs_work: >-
+      {{ (identity_stamp_raw.content is not defined)
+         or ((identity_stamp_raw.content | b64decode).strip() != fleet_identity_token) }}
+
+# machine-id is what systemd derives its default DHCP DUID from. Clones share
+# it, so the DHCP server sees one client where there are three boards — the
+# most plausible explanation for the address drift this fleet keeps hitting.
+- name: Give this board its own machine-id
+  when:
+    - identity_needs_work | bool
+    - fleet_regenerate_machine_id | bool
+  block:
+    - name: Remove the cloned machine-id
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/machine-id
+        - /var/lib/dbus/machine-id
+
+    - name: Generate a fresh machine-id
+      ansible.builtin.command: systemd-machine-id-setup
+      changed_when: true
+
+    - name: Point dbus at the same id
+      ansible.builtin.copy:
+        src: /etc/machine-id
+        dest: /var/lib/dbus/machine-id
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+      notify: reboot board
+
+# A dd clone copies /etc/ssh/ssh_host_* verbatim, which is why one ED25519 key
+# currently answers under three different addresses on this LAN.
+- name: Give this board its own SSH host keys
+  when:
+    - identity_needs_work | bool
+    - fleet_regenerate_host_keys | bool
+  block:
+    - name: Find the cloned host keys
+      ansible.builtin.find:
+        paths: /etc/ssh
+        patterns: "ssh_host_*"
+      register: identity_host_keys
+
+    - name: Remove them
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ identity_host_keys.files }}"
+      loop_control:
+        label: "{{ item.path }}"
+
+    - name: Generate a fresh set
+      ansible.builtin.command: ssh-keygen -A
+      changed_when: true
+      notify: restart sshd
+
+- name: Record that this board has been individualised
+  ansible.builtin.copy:
+    dest: "{{ fleet_identity_stamp }}"
+    content: |
+      {{ fleet_identity_token }}
+    owner: root
+    group: root
+    mode: "0644"
+  when: identity_needs_work | bool
+
+- name: Say what happens next
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }} is now {{ fleet_hostname }}.
+      A fresh machine-id means a fresh DHCP DUID, so this board may come back
+      on a DIFFERENT address after the reboot. Find it again with
+      ~/3xRPi/scripts/find_pi.sh, and clear the stale host key locally with
+      ssh-keygen -R {{ ansible_host | default(inventory_hostname) }}.
+  when: identity_needs_work | bool

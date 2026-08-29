@@ -1,0 +1,25 @@
+---
+# One-off individualisation of a fleet built from cloned SD cards.
+#
+#   ansible-playbook playbooks/identity.yml --check --diff   # dry run first
+#   ansible-playbook playbooks/identity.yml
+#
+# What it does: one admin account with a deployed SSH key, a unique hostname
+# per board (rpi-01 / rpi-02 / rpi-03), and a unique machine-id and SSH host
+# key set — the three things a dd clone duplicates.
+#
+# What it deliberately does NOT do: touch netplan. These boards are Wi-Fi only
+# (eth0 is down on all of them), so a bad network change leaves no way back in
+# short of a monitor and a keyboard. Address stability belongs on the router,
+# as MAC reservations for the wlan0 MACs. See README.
+#
+# Run it ONE BOARD AT A TIME the first time round:
+#   ansible-playbook playbooks/identity.yml --limit rpi-01
+# A new machine-id means a new DHCP DUID, so a board can come back on a
+# different address; doing them one by one keeps that easy to follow.
+- name: Individualise the cloned boards
+  hosts: rpi
+  become: true
+  serial: 1
+  roles:
+    - identity

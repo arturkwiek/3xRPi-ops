@@ -1,0 +1,34 @@
+---
+# Per-machine identity for a fleet built from cloned SD cards.
+#
+# The clones are the problem this role exists to solve: every board flashed
+# from one image shares its hostname, its /etc/machine-id and its SSH host
+# keys. That makes the fleet impossible to tell apart from the inside, and
+# (via machine-id -> systemd DHCP DUID) plausibly makes the boards fight over
+# a single DHCP lease.
+
+# The one admin account used across the whole fleet.
+fleet_admin_user: mwd
+
+# Public key deployed to that account's authorized_keys, read from the CONTROL
+# machine. Generate it once:
+#   ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_rpi -C "3xRPi fleet"
+fleet_admin_pubkey: "~/.ssh/id_ed25519_rpi.pub"
+
+# Hostname to set. Defaults to the inventory alias, so alias == hostname ==
+# the sticker on the board: rpi-01 / rpi-02 / rpi-03.
+fleet_hostname: "{{ inventory_hostname }}"
+
+# Individualisation steps. Each is guarded by the stamp file below, so a
+# second run is a no-op rather than a fresh round of key churn.
+fleet_regenerate_machine_id: true
+fleet_regenerate_host_keys: true
+
+# Marker recording that this board has been individualised. Bump the token to
+# force the guarded steps to run again (e.g. after re-flashing a card).
+fleet_identity_stamp: /etc/fleet-identity
+fleet_identity_token: "v1"
+
+# SAFETY: left off on purpose. Turning this on before you have verified that
+# key login works locks you out of a headless, Wi-Fi-only machine.
+fleet_disable_password_auth: false

@@ -32,13 +32,72 @@ inventory/
   host_vars/rpi-0*.yml     per-host load profiles for the stress demo
 playbooks/
   site.yml                 baseline + node_exporter (standing config)
+  identity.yml             ONE-OFF: unique hostname/machine-id/host keys + SSH key
   update.yml               apt update + safe upgrade (+ opt-in reboot)
   stress.yml               differentiated CPU/RAM/IO/net load per host (monitoring demo)
 roles/
   baseline/                packages, timezone, unattended-upgrades
+  identity/                de-clone the boards: hostname, machine-id, host keys, SSH key
   node_exporter/           ensure existing :9100 exporter is up (adopts upstream install)
   app/                     PLACEHOLDER — deployment target undecided
 ```
+
+## Making the boards twins (but distinguishable)
+
+The fleet was built from one SD image, and on 2026-08-29 a third clone was
+added: rpi-03's card stopped booting, so its board was re-flashed from a copy
+of rpi-02's card. The result is a fleet that is **identical in all the ways
+that hurt** — same hostname `MWDRPi`, same `/etc/machine-id`, same SSH host
+keys — and different in none of the ways that help.
+
+`playbooks/identity.yml` fixes exactly that, and nothing else:
+
+| What | Why it matters |
+|---|---|
+| one admin account (`mwd`) with a deployed SSH key | one login method for the whole fleet, no more password prompts |
+| hostname `rpi-01` / `rpi-02` / `rpi-03` | alias == hostname == the sticker on the board |
+| fresh `/etc/machine-id` per board | systemd derives its **DHCP DUID** from it; clones present one identity to the router and can fight over a single lease |
+| fresh `/etc/ssh/ssh_host_*` per board | a `dd` clone copies these, so today one key answers under three addresses |
+
+```bash
+# once, on this machine
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_rpi -C "3xRPi fleet"
+
+cd ~/3xRPi-ops
+ansible-playbook playbooks/identity.yml --limit rpi-01 --check --diff   # look first
+ansible-playbook playbooks/identity.yml --limit rpi-01                  # then apply
+```
+
+Do **one board at a time**. A new machine-id means a new DHCP DUID, so a board
+may come back on a different address after its reboot; find it again with
+`~/3xRPi/scripts/find_pi.sh` and drop the stale key with `ssh-keygen -R <ip>`.
+Re-running the playbook is a no-op — the guarded steps are stamped in
+`/etc/fleet-identity`.
+
+Once every board answers on the key, switch the project off passwords:
+set `fleet_disable_password_auth: true`, re-run, then drop `ask_pass` from
+`ansible.cfg` and point `group_vars/rpi.yml` at the private key. Not before —
+these boards are headless.
+
+### What this playbook will not do
+
+It does not touch netplan. Every board is **Wi-Fi only** (`eth0` is `down` on
+all of them, traffic goes over `wlan0`), so a broken network config leaves no
+way back in short of a monitor and a keyboard. Address stability belongs on
+the router instead, as DHCP reservations for the **wlan0** MACs:
+
+```
+rpi-01  88:a2:9e:27:38:7a
+rpi-02  88:a2:9e:27:39:49
+rpi-03  88:a2:9e:27:2c:be
+```
+
+Note the trap if those reservations appear not to work: systemd-networkd sends
+a DUID as DHCP option 61 by default, and many routers match reservations on
+that rather than on the MAC. Giving each board its own machine-id (above) makes
+those DUIDs distinct, which is the prerequisite for reservations to behave. If
+they still drift after that, the remaining fix is `dhcp-identifier: mac` in
+netplan — worth doing with a screen attached, not remotely.
 
 ## Prerequisites (need sudo — run these yourself)
 

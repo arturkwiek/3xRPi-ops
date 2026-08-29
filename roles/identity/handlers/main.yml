@@ -1,0 +1,21 @@
+---
+# reload keeps existing sessions alive; restart is only needed after the host
+# keys change, and even then it does not drop the connection Ansible is using.
+- name: reload sshd
+  ansible.builtin.service:
+    name: ssh
+    state: reloaded
+
+- name: restart sshd
+  ansible.builtin.service:
+    name: ssh
+    state: restarted
+
+# Hostname and machine-id only take full effect after a restart. Ansible waits
+# for the board to come back, but note it may return on a different address
+# (new machine-id -> new DHCP DUID), in which case this wait times out and you
+# find the board again with find_pi.sh. That is expected, not a failure.
+- name: reboot board
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+    msg: "Rebooting to apply hostname and machine-id (3xRPi-ops identity role)"
