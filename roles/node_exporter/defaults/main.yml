@@ -2,17 +2,33 @@
 # Rola działa w dwóch trybach i to jest jej najważniejsza cecha:
 #
 #   1. ADOPCJA — jeśli binarka już jest, rola jej NIE dotyka. Pilnuje tylko, żeby
-#      usługa chodziła i słuchała na :9100. Tak jest na rpi-01 i rpi-03, gdzie
-#      node_exporter postawiono ręcznie 20-06 skryptem setup_rpi_monitoring.sh
-#      (kopia w ~/3xRPi/scripts/). Nadpisywanie tego byłoby zmianą bez powodu.
+#      usługa chodziła i słuchała na :9100. Tak jest na rpi-01 i rpi-03.
+#      Nadpisywanie tego byłoby zmianą bez powodu.
+#
+#      Jak tam trafiła — dwiema roznymi drogami, ustalone 30-08:
+#        rpi-01: Z RĘKI, komenda po komendzie. W historii powłoki jest pełny
+#                ciąg useradd -> curl -LO -> tar -> cp -> tee jednostki ->
+#                systemctl enable --now; binarka datowana 20-06 10:07:22.
+#        rpi-03: SKRYPTEM setup_rpi_monitoring.sh. Skrypt leży w ~ z datą
+#                11:08, binarka ma 11:10:43, a historia powłoki nie zawiera
+#                ANI JEDNEJ komendy monitoringu.
+#      Czyli skrypt powstał po ręcznym biegu na rpi-01 i został użyty do
+#      postawienia kolejnej płyty. Ta rola jest trzecim ogniwem tego łańcucha.
 #
 #   2. INSTALACJA — jeśli binarki nie ma, rola stawia ją od zera. Tego brakowało
 #      do 30-08 i dlatego site.yml wywalał się na rpi-02.
 #
-# Parametry instalacji są przepisane 1:1 z install_node_exporter() z oryginalnego
-# skryptu, żeby maszyna postawiona przez Ansible była nieodróżnialna od tych
-# dwóch postawionych ręcznie. To celowe: flota ma być jednorodna, a nie mieć
-# dwa warianty tej samej usługi.
+# Parametry instalacji są przepisane z install_node_exporter() ze skryptu, żeby
+# maszyna postawiona przez Ansible była nieodróżnialna od tych dwóch zrobionych
+# z ręki. To celowe: flota ma być jednorodna, a nie mieć dwa warianty tej samej
+# usługi.
+#
+# JEDNA RÓŻNICA JEST ŚWIADOMA I NA KORZYŚĆ. Ręczny bieg na rpi-01 weryfikował
+# sumą kontrolną archiwum Prometheusa (pobrał sha256sums.txt i puścił
+# `sha256sum -c -`), ale przy node_exporterze TEGO KROKU NIE BYŁO — samo
+# `curl -LO`, `tar`, `cp`. Skrypt tę lukę zamknął funkcją download_and_verify,
+# a ta rola idzie tą samą drogą: `checksum: sha256:<base>/sha256sums.txt`.
+# Binarka lądująca w /usr/local/bin ma być zweryfikowana, nie pobrana w ciemno.
 node_exporter_service: node_exporter
 node_exporter_port: 9100
 
