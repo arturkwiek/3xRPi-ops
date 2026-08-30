@@ -134,13 +134,17 @@ Flota przestała być jednorodna:
 | rpi-02 | `.172` | **Ubuntu 24.04** | **brak** | z hasłem |
 | rpi-03 | `.100` | Ubuntu 26.04 | działa | NOPASSWD |
 
-Kolejność, którą warto trzymać przy pierwszym uruchomieniu:
+Pełna procedura z warunkami przerwania na każdym etapie: **[`SYNCHRONIZACJA.md`](SYNCHRONIZACJA.md)**.
+W skrócie:
 
-1. `ansible rpi -m ping` — rozstrzyga, czy konto i hasło wchodzą na wszystkie trzy.
-2. Przestaw `fleet_regenerate_machine_id` na `false` (patrz tabela pułapek).
-3. `ansible-playbook playbooks/identity.yml --limit rpi-01 --check --diff`, potem na ostro.
-4. To samo dla `rpi-03`, na końcu `rpi-02` (jej wystarczy nazwa hosta i klucz — nie jest klonem).
-5. `site.yml` dopiero na `rpi-01,rpi-03`; rpi-02 potrzebuje wcześniej node_exportera.
+1. `ansible rpi -m ping` — **przeszedł 30-08 na wszystkich trzech.**
+2. `ansible rpi -m command -a 'id -un' --become` — to dopiero sprawdza `sudo`, czego `ping` nie robi.
+3. `identity.yml --limit rpi-01 --check --diff`, potem na ostro; po biegu `ssh-keygen -R <adres>`.
+4. To samo dla `rpi-03`, na końcu `rpi-02` (nie jest klonem, ale `sudo` wymaga tam hasła).
+5. `site.yml` **tylko** na `rpi-01,rpi-03`; rpi-02 potrzebuje wcześniej node_exportera.
+
+`fleet_regenerate_machine_id` jest już przestawione na `false` (commit `370a450`), więc płyta
+po biegu `identity.yml` **wraca pod tym samym adresem**.
 
 ---
 
@@ -149,6 +153,7 @@ Kolejność, którą warto trzymać przy pierwszym uruchomieniu:
 | Plik | Co daje | Kiedy czytać |
 |---|---|---|
 | `docs/SCIAGA.md` | ta kartka | zawsze, przy terminalu |
+| `docs/SYNCHRONIZACJA.md` | **runbook: doprowadzenie floty do spójnego stanu, etap po etapie** | gdy siadasz do synchronizacji |
 | `docs/wprowadzenie-ansible.md` | kurs Ansible od zera na tym projekcie, 12 rozdziałów | raz, na spokojnie |
 | `docs/demo-obciazenie.md` | `host_vars` i warunkowe budowanie komend, na przykładzie `stress.yml` | gdy zechcesz zróżnicować maszyny |
 | `README.md` | szczegóły techniczne i uzasadnienia decyzji — **po angielsku** | gdy szukasz „dlaczego tak" |
