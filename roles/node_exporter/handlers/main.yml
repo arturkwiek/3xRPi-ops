@@ -1,0 +1,10 @@
+---
+# Odpalane tylko wtedy, gdy instalacja faktycznie coś zmieniła. Na maszynie,
+# która node_exportera już miała, żadne zadanie ich nie zawoła — i o to chodzi.
+# Przeladowanie systemd NIE jest handlerem celowo — musi nastapic przed
+# zadaniem uruchamiajacym usluge, a handlery leca dopiero na koncu play.
+# Robi je `daemon_reload: true` w samym zadaniu (tasks/main.yml).
+- name: restart node_exporter
+  ansible.builtin.service:
+    name: "{{ node_exporter_service }}"
+    state: restarted

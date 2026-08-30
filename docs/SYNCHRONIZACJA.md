@@ -140,18 +140,32 @@ rpi-02 nadal potrzebuje hasła do `sudo`.
 
 ---
 
-## Etap 6 — baseline i monitoring, ale **bez rpi-02**
+## Etap 6 — baseline i monitoring
 
 ```bash
 ansible-playbook playbooks/site.yml --limit rpi-01,rpi-03 --check --diff
 ansible-playbook playbooks/site.yml --limit rpi-01,rpi-03
 ```
 
-**Dlaczego bez rpi-02 — to nie jest ostrożność, tylko fakt o kodzie.** Rola
-`node_exporter` **nie instaluje** node_exportera; ona tylko pilnuje, żeby istniejąca
-usługa chodziła (`service: started` + `wait_for` portu 9100). Na rpi-01 i rpi-03 ta
-usługa jest, na rpi-02 **nie ma ani binarki, ani unitu**, więc bieg zatrzyma się tam
-na błędzie.
+Na tych dwóch płytach rola `node_exporter` działa w trybie **adopcji** — usługa już
+tam jest, więc rola jej nie dotyka i pilnuje tylko, żeby chodziła. Poprawny wynik to
+same `ok`, zero `changed`.
+
+**rpi-02 zrób osobno i najpierw na sucho**, bo to jedyna maszyna, na której rola
+faktycznie coś zainstaluje:
+
+```bash
+ansible-playbook playbooks/site.yml --limit rpi-02 --check --diff
+ansible-playbook playbooks/site.yml --limit rpi-02
+```
+
+Do 30-08 rola **tylko adoptowała** i bieg na rpi-02 kończył się tam błędem. Od
+commita, który dołożył krok instalacyjny, rola pobiera binarkę z upstreamu
+(zweryfikowaną sumą z `sha256sums.txt` wydania), zakłada konto systemowe
+`node_exporter` i zapisuje jednostkę systemd — przepisane z oryginalnego
+`setup_rpi_monitoring.sh`, żeby ta płyta była nieodróżnialna od pozostałych dwóch.
+Pierwsze zadanie roli wypisuje, w którym trybie działa, więc od razu widać, czy
+adoptuje, czy instaluje.
 
 Po tym etapie sprawdź w Prometheusie, czy oba cele są `up`:
 <http://localhost:9090/targets>
@@ -187,12 +201,14 @@ a restart jest opcjonalny:
 ansible-playbook playbooks/update.yml --limit rpi-02 -e reboot_if_required=true
 ```
 
-Zostaje `node_exporter`. Dopóki rola go nie instaluje, masz dwie drogi: wgrać binarkę
-i unit ręcznie (wzorem rpi-01: `/usr/local/bin/node_exporter`, unit `node_exporter`,
-wersja upstream 1.11.1) albo poczekać, aż rola dostanie krok `get_url` + szablon unitu.
+`node_exporter` załatwia już `site.yml` z etapu 6 — rola instaluje go tam, gdzie
+brakuje. Ręczne wgrywanie binarki nie jest potrzebne.
 
 Dopiero gdy `:9100` na rpi-02 odpowiada, odkomentuj trzeci cel w
 `~/3xRPi/config/prometheus.yml` — wcześniej byłby stałym `HostDown`.
+
+Wtedy zniknie też ostatni objaw tej samej luki: `find_pi.sh` przestanie zgłaszać
+„nazwa hosta nieznana" dla `.172`, bo czyta ją właśnie z metryk na `:9100`.
 
 ---
 

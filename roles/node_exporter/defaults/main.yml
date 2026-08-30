@@ -1,10 +1,40 @@
 ---
-# The Pi's run node_exporter installed manually from upstream: the official
-# binary at /usr/local/bin/node_exporter (v1.11.1), managed by a systemd unit
-# named `node_exporter` (NOT the apt `prometheus-node-exporter`). The upstream
-# build is newer than the apt package, so we ADOPT it rather than replace it:
-# this role only ensures the existing service is up and listening. It does not
-# install or own the binary/unit — that stays as it was set up by hand.
-# (Recon on 2026-07-02 confirmed all three hosts.)
+# Rola działa w dwóch trybach i to jest jej najważniejsza cecha:
+#
+#   1. ADOPCJA — jeśli binarka już jest, rola jej NIE dotyka. Pilnuje tylko, żeby
+#      usługa chodziła i słuchała na :9100. Tak jest na rpi-01 i rpi-03, gdzie
+#      node_exporter postawiono ręcznie 20-06 skryptem setup_rpi_monitoring.sh
+#      (kopia w ~/3xRPi/scripts/). Nadpisywanie tego byłoby zmianą bez powodu.
+#
+#   2. INSTALACJA — jeśli binarki nie ma, rola stawia ją od zera. Tego brakowało
+#      do 30-08 i dlatego site.yml wywalał się na rpi-02.
+#
+# Parametry instalacji są przepisane 1:1 z install_node_exporter() z oryginalnego
+# skryptu, żeby maszyna postawiona przez Ansible była nieodróżnialna od tych
+# dwóch postawionych ręcznie. To celowe: flota ma być jednorodna, a nie mieć
+# dwa warianty tej samej usługi.
 node_exporter_service: node_exporter
 node_exporter_port: 9100
+
+# Instaluj, gdy brakuje. Ustaw na false, jeśli chcesz wyłącznie adopcję
+# i wolisz, żeby brak binarki był twardym błędem.
+node_exporter_install_missing: true
+
+# Wersja upstream. 1.11.1 chodzi dziś na rpi-01 i rpi-03 — podnoszenie jej tutaj
+# NIE zaktualizuje tamtych dwóch, bo rola ich nie dotyka (patrz tryb 1).
+node_exporter_version: "1.11.1"
+
+node_exporter_user: node_exporter
+node_exporter_bin: /usr/local/bin/node_exporter
+node_exporter_unit: /etc/systemd/system/node_exporter.service
+
+node_exporter_release_base: >-
+  https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}
+
+# uname -m  ->  nazwa architektury w nazwie archiwum upstreamu
+node_exporter_arch_map:
+  aarch64: arm64
+  x86_64: amd64
+  armv7l: armv7
+  armv6l: armv6
+node_exporter_arch: "{{ node_exporter_arch_map[ansible_architecture] | default('arm64') }}"

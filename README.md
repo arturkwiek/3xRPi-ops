@@ -167,7 +167,7 @@ node_exporter graphs show three distinct traces. Full walkthrough:
 You'll be prompted for `SSH password:` and `BECOME password:` (both are `mwd`'s
 password / sudo password on the Pi's).
 
-### node_exporter — adopts the existing upstream install
+### node_exporter — adopts what is there, installs what is missing
 
 Recon (2026-07-02) settled what's actually on the Pi's: the official upstream
 node_exporter **v1.11.1**, binary at `/usr/local/bin/node_exporter`, run by a
@@ -175,10 +175,32 @@ systemd unit named **`node_exporter`** (not the apt `prometheus-node-exporter`),
 enabled and listening on :9100 on all three hosts.
 
 That upstream build is *newer* than Ubuntu's apt package, so migrating to apt
-would be a downgrade plus a monitoring gap for no gain. The role therefore
-**adopts** the existing service: it only ensures `node_exporter` is started,
-enabled, and listening — it does **not** install a package or own the
-binary/unit. A clean run is all `ok` / no `changed`.
+would be a downgrade plus a monitoring gap for no gain. Where the binary is
+already present the role therefore **adopts** the existing service: it only
+ensures `node_exporter` is started, enabled and listening, and does not touch
+the binary or the unit. A clean run there is all `ok` / no `changed`.
+
+**Since 2026-08-30 the role also installs it where it is missing.** Until then it
+only adopted, which is why a `site.yml` run died on rpi-02 — that board came back
+on a fresh image and never had node_exporter at all. The install path is
+transcribed from `install_node_exporter()` in the original hand-written
+`setup_rpi_monitoring.sh` (recovered from `rpi-03:~/` on 30-08, now kept at
+`~/3xRPi/scripts/setup_rpi_monitoring.sh`), so a board provisioned by Ansible is
+indistinguishable from the two set up by hand: upstream tarball for the detected
+arch, **verified against the release's `sha256sums.txt`**, binary installed to
+`/usr/local/bin/node_exporter`, a system account `node_exporter` with no login
+and no home, and a systemd unit with `Restart=on-failure`.
+
+Two deliberate details:
+
+- **Do NOT run `setup_rpi_monitoring.sh` on a fleet board to get node_exporter.**
+  It predates the 2026-07-02 decision that the Pi's run only node_exporter: its
+  `main()` calls `install_prometheus` unconditionally and `start_services` does
+  `systemctl enable --now prometheus node_exporter`. There is a `--no-grafana`
+  flag but no `--no-prometheus`. The role exists precisely so you do not have to
+  touch that script.
+- Set `node_exporter_install_missing: false` if you want the old behaviour, where
+  a missing binary is a hard error rather than something the role fixes.
 
 If you ever want Ansible to fully own the exporter (reproducible from code),
 that's the "full IaC" path — `get_url` the release, template the systemd unit,

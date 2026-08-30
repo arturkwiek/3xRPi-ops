@@ -94,7 +94,7 @@ Wniosek: `--check` łapie literówki i grube pomyłki, nie zastępuje myślenia.
 
 | Pułapka | Co się stanie | Co zrobić |
 |---|---|---|
-| **`node_exporter` NIE instaluje** — rola tylko *adoptuje* istniejącą usługę (`service: started` + `wait_for` portu) | `site.yml` **wywali się** na `rpi-02`, bo tam nie ma ani binarki, ani unitu | najpierw `--limit rpi-01,rpi-03`; rpi-02 wymaga instalacji ręcznej albo rozbudowy roli |
+| ~~`node_exporter` NIE instaluje~~ — **naprawione 30-08** | rola instaluje tam, gdzie brakuje, i adoptuje tam, gdzie już jest. `site.yml` obejmuje całą trójkę | pierwszy bieg na rpi-02 zrób osobno: `--limit rpi-02 --check --diff`, potem na ostro |
 | **`fleet_regenerate_machine_id: true`** w `roles/identity/defaults/main.yml:24` | zmieni DUID DHCP → płyta wróci pod **innym adresem** | pomiar z 30-08 obalił przesłankę tej opcji (wszystkie trzy `machine-id` są różne). Przestaw na `false`, zanim uruchomisz `identity.yml` |
 | **Płyty są tylko na Wi-Fi**, `eth0` jest `down` na wszystkich trzech | błąd w konfiguracji sieci = koniec dostępu, maszyny są bezgłowe | `identity` **celowo nie tyka netplana**. Nie dopisuj tam zadań sieciowych |
 | **`fleet_disable_password_auth`** | włączone przed wgraniem klucza = zamknięcie się na zewnątrz | zostaw `false`, dopóki nie zalogujesz się kluczem na **każdej** płycie |
