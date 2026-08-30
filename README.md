@@ -3,24 +3,35 @@
 Config management for the Raspberry Pi fleet (Ubuntu) on the LAN.
 Separate from `~/3xRPi` (that repo is monitoring *docs*; this one is *ops*).
 
+> **Nowy tutaj? Zacznij od `docs/SCIAGA.md`** — jedna kartka po polsku: mapa repo,
+> pięć komend, pułapki tej floty i stan na dziś. Kurs Ansible od zera:
+> `docs/wprowadzenie-ansible.md`. Ten plik (README) jest po angielsku i jest
+> **referencją techniczną**, nie materiałem do nauki — trzyma uzasadnienia decyzji.
+
 ## Fleet
 
-| host   | IP                    | user | MAC               |
-|--------|-----------------------|------|-------------------|
-| rpi-01 | 192.168.0.102         | mwd  | 88:a2:9e:27:38:7a |
-| rpi-02 | 192.168.0.106         | mwd  | 88:a2:9e:27:39:49 |
-| rpi-03 | *unknown — off-net*   | mwd  | —                 |
+| host   | IP            | user | MAC (wlan0)       | OS          | node_exporter |
+|--------|---------------|------|-------------------|-------------|---------------|
+| rpi-01 | 192.168.0.170 | mwd  | 88:a2:9e:27:38:7a | Ubuntu 26.04 | up           |
+| rpi-02 | 192.168.0.172 | mwd  | 88:a2:9e:27:39:49 | **Ubuntu 24.04** | **absent** |
+| rpi-03 | 192.168.0.100 | mwd  | 88:a2:9e:27:2c:be | Ubuntu 26.04 | up           |
 
-**Addresses verified 2026-08-09.** The previous entries (`.212` / `.213` /
-`.145`) were dead — the fleet had picked up new DHCP leases. A TCP sweep of
-the whole subnet for ports 22 and 9100 found exactly two live machines;
-`rpi-03` is not present under any address and is commented out in the
-inventory. Add MAC-based DHCP reservations on the router or this drifts again.
+**Addresses verified 2026-08-30 00:02 by SSH login on all three.** This is the
+FOURTH drift; every earlier mapping (`.212/.213/.145`, `.102/.106/.151`,
+`.170/.169/.249`) is dead. MAC-based DHCP reservations on the router are the only
+known fix — see the note under "Making the boards twins" about what is NOT the fix.
 
-Hardware (read from node_exporter metrics): Raspberry Pi 5, 16 GB RAM,
-4 cores aarch64, Ubuntu 26.04 LTS, kernel `7.0.0-1016-raspi`. Both machines
-report the same hostname `MWDRPi` — cloned SD image, so do not use `hostname`
-to tell them apart.
+**The fleet is no longer homogeneous.** rpi-01 and rpi-03 run Ubuntu 26.04 with
+kernel `7.0.0-1016-raspi`; rpi-02 came back on a fresh, never-provisioned Ubuntu
+24.04 image (kernel `6.8.0-1047-raspi`, 131 pending updates, no `pip`, no
+node_exporter, `sudo` needs a password). A `site.yml` run therefore **fails on
+rpi-02** — see the node_exporter caveat below. Full 67-field comparison:
+`~/3xRPi/docs/POROWNANIE-FLOTY-2026-08-30.md`.
+
+Hardware, all three: Raspberry Pi 5 Model B Rev 1.1, 16 GB RAM, Cortex-A76 x4 @
+2.4 GHz, **Wi-Fi only — `eth0` is down on every board.** All three still report the
+same hostname `MWDRPi` (cloned SD image), so do not use `hostname` to tell them
+apart — and note the MAC identifies the BOARD, not the system on its card.
 
 ## Layout
 

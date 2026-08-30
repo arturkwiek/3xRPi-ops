@@ -73,14 +73,23 @@ ansible.cfg                ← globalne ustawienia (jak Ansible ma się łączy�
 inventory/
   hosts.ini                ← LISTA maszyn (kto?)
   group_vars/rpi.yml       ← zmienne dla grupy hostów (szczegóły połączenia)
+  host_vars/rpi-0*.yml     ← zmienne dla JEDNEJ maszyny (rozdział w demo-obciazenie.md)
 playbooks/
   site.yml                 ← CO zrobić: baseline + monitoring
   update.yml               ← CO zrobić: aktualizacje systemu
+  identity.yml             ← CO zrobić: nadaj płytom własną tożsamość (jednorazowy)
+  stress.yml               ← CO zrobić: sztuczne obciążenie pod demo monitoringu
 roles/
   baseline/                ← wielokrotnego użytku "paczka" zadań: pakiety, TZ...
   node_exporter/           ← "paczka" zadań: monitoring na :9100
+  identity/                ← hostname, machine-id, klucze hosta, konto admina
   app/                     ← na razie pusty szkielet
 ```
+
+> **Rola `identity` ma własny rozdział — 8e.** Powstała później niż reszta (29-08),
+> jest najbardziej rozbudowana w repo i to na niej poznasz **handlery**, `validate`,
+> `delegate_to`, `run_once` i `serial: 1`. Zanim ją uruchomisz, zerknij też na tabelę
+> pułapek w [`SCIAGA.md`](SCIAGA.md).
 
 Zależność mentalna, którą warto zapamiętać:
 
@@ -314,6 +323,155 @@ Celowo pusta rola-placeholder. Nie jest podpięta do `site.yml`. Czeka, aż
 zdecydujesz, co Pi mają hostować. Dobry przykład, że rolę można mieć "w
 zanadrzu" bez uruchamiania.
 
+### 8e. `roles/identity` — najbardziej rozbudowana rola, i pierwsze handlery
+
+To jest rola, na której zobaczysz **wszystko, czego nie było w `baseline`**: handlery,
+zabezpieczenia przed uruchomieniem w złym momencie, walidację pliku przed zapisem
+i znacznik, dzięki któremu drugi bieg nic nie robi. Powstała 29-08, żeby rozwiązać
+konkretny problem: **trzy płyty wypalone z jednej karty są nierozróżnialne od środka** —
+ta sama nazwa hosta `MWDRPi`, te same klucze SSH.
+
+Uruchamia ją osobny playbook, `playbooks/identity.yml`, a nie `site.yml` — bo to
+operacja **jednorazowa**, a nie konfiguracja stała.
+
+#### Nowość pierwsza: handler, czyli „zrób coś tylko jeśli coś się zmieniło"
+
+Handler to zadanie, które **samo z siebie nigdy się nie uruchamia**. Czeka, aż inne
+zadanie je „zawoła" przez `notify` — i to tylko wtedy, gdy tamto zadanie faktycznie
+coś zmieniło (`changed: true`).
+
+```yaml
+# roles/identity/tasks/main.yml
+- name: Make sure sshd accepts public keys
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^\s*#?\s*PubkeyAuthentication\s'
+    line: "PubkeyAuthentication yes"
+    validate: "sshd -t -f %s"
+  notify: reload sshd        # ← zawołaj handler o tej nazwie
+```
+
+```yaml
+# roles/identity/handlers/main.yml
+- name: reload sshd          # ← nazwa musi się zgadzać co do znaku
+  ansible.builtin.service:
+    name: ssh
+    state: reloaded
+```
+
+Trzy rzeczy, które trzeba o handlerach wiedzieć:
+
+- **Odpalają się na końcu play, nie natychmiast.** Jeśli pięć zadań zawoła ten sam
+  handler, wykona się on **raz**, po wszystkich zadaniach. To dokładnie o to chodzi:
+  nie chcesz pięciu restartów sshd pod rząd.
+- **Nie odpalą się, jeśli zadanie zwróciło `ok`.** Konfiguracja już była poprawna →
+  brak zmiany → brak restartu. To jest idempotencja w praktyce.
+- **Domyślnie nie odpalą się, jeśli wcześniejsze zadanie się wywali.** Play przerywa
+  się na błędzie, a handlery czekały na koniec — więc ich kolejka przepada.
+
+Ta rola ma trzy handlery, celowo o różnej sile: `reload sshd` (nie zrywa połączeń),
+`restart sshd` (potrzebny po zmianie kluczy hosta) i `reboot board` (bo nazwa hosta
+w pełni wchodzi w życie dopiero po restarcie).
+
+#### Nowość druga: sprawdź warunki, zanim cokolwiek ruszysz
+
+Pierwsze dwa zadania w tej roli nic nie konfigurują — **sprawdzają, czy w ogóle warto
+zaczynać**:
+
+```yaml
+- name: Check that the public key exists on the control machine
+  ansible.builtin.stat:
+    path: "{{ fleet_admin_pubkey | expanduser }}"
+  delegate_to: localhost     # ← wykonaj to na MOJEJ maszynie, nie na Pi
+  become: false
+  run_once: true             # ← raz dla całej floty, nie raz na host
+  register: identity_pubkey
+
+- name: Fail early with an instruction rather than a stack trace
+  ansible.builtin.fail:
+    msg: >-
+      No public key at {{ fleet_admin_pubkey }}. Generate one on this machine
+      first: ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_rpi -C "3xRPi fleet"
+  when: not identity_pubkey.stat.exists
+  run_once: true
+```
+
+Trzy nowe pojęcia naraz:
+
+| Zapis | Znaczenie |
+|---|---|
+| `delegate_to: localhost` | to zadanie wykonaj **lokalnie**, choć play dotyczy Pi |
+| `run_once: true` | wykonaj raz, nie osobno dla każdego hosta |
+| `ansible.builtin.fail` | przerwij świadomie, z własnym komunikatem |
+
+Sens jest praktyczny: bez klucza publicznego rola i tak by nie zadziałała, ale bez tego
+zabezpieczenia dowiedziałbyś się o tym **w połowie roboty**, z niezrozumiałego błędu
+i z połową maszyny już zmienionej.
+
+#### Nowość trzecia: `validate` — nie zepsuj pliku, którym się łączysz
+
+```yaml
+    validate: "sshd -t -f %s"
+```
+
+Ansible zapisuje nową wersję pliku **do pliku tymczasowego**, uruchamia na nim tę
+komendę (`%s` to podstawiana ścieżka) i dopiero gdy przejdzie — podmienia plik
+docelowy. Przy `sshd_config` to nie jest ostrożność, tylko konieczność: błąd składni
+w tym pliku plus restart sshd oznacza **koniec dostępu do maszyny bez monitora**.
+
+#### Nowość czwarta: znacznik, żeby drugi bieg był no-opem
+
+```yaml
+fleet_identity_stamp: /etc/fleet-identity
+fleet_identity_token: "v1"
+```
+
+Kroki, które generują nowe klucze, są opakowane w warunek sprawdzający ten plik.
+Bez tego każde uruchomienie roli produkowałoby **nowy komplet kluczy hosta**, a każdy
+z nich to kolejne ostrzeżenie w `known_hosts` na Twoim laptopie. Podniesienie tokenu
+na `v2` wymusza ponowne wykonanie — przydatne po przepaleniu karty.
+
+#### `serial: 1` w playbooku — po jednej maszynie
+
+```yaml
+# playbooks/identity.yml
+- name: Individualise the cloned boards
+  hosts: rpi
+  become: true
+  serial: 1        # ← domyślnie Ansible leci równolegle po wszystkich hostach
+  roles:
+    - identity
+```
+
+Domyślnie Ansible wykonuje zadanie na **wszystkich** hostach naraz, potem przechodzi
+do następnego zadania. `serial: 1` zmienia to na „przejdź całą rolę na pierwszej
+maszynie, dopiero potem zacznij drugą". Tutaj to celowe: po zmianie tożsamości płyta
+się restartuje i może wrócić pod innym adresem — łatwiej to śledzić po jednej sztuce
+niż po trzech naraz.
+
+#### Lekcja, która nie jest o Ansible
+
+Ta rola miała pierwotnie **trzy** kroki odklonowujące: nazwa hosta, klucze SSH
+i `/etc/machine-id`. Ten trzeci opierał się na rozumowaniu: systemd wyprowadza z
+`machine-id` domyślny identyfikator DHCP, klony mają ten sam `machine-id`, więc płyty
+biją się o jedną dzierżawę — i stąd cztery zmiany adresów w miesiąc.
+
+**Pomiar 30-08 pokazał, że to nieprawda.** Wszystkie trzy płyty mają **różne**
+`machine-id`, łącznie z dwiema, które chodzą na klonach jednej karty. Obraz Ubuntu
+wychodzi z **pustym** `/etc/machine-id`, a systemd generuje go przy pierwszym starcie —
+więc nawet kopia `dd` dostaje własny.
+
+Skutek jest odwrotny do zamierzonego: uruchomienie tego kroku **zmieniłoby** DUID
+i sprowadziło płytę pod nowy adres, czyli samo wywołałoby dryf, przed którym miało
+chronić. Dlatego `fleet_regenerate_machine_id` ma dziś domyślnie **`false`**, a krok
+został w kodzie — bo po przepaleniu karty z obrazu, który *ma już* wypełniony
+`machine-id`, regeneracja jest właściwym działaniem.
+
+> Morał na przyszłość, wart więcej niż sama flaga: **zadanie napisane na podstawie
+> hipotezy jest tak samo niepewne jak ta hipoteza.** Ta była sensowna, dobrze
+> uzasadniona i błędna. Jedno `cat /etc/machine-id` na trzech maszynach rozstrzygnęło
+> ją w minutę — i warto było je zrobić, zanim rola cokolwiek zmieniła.
+
 ---
 
 ## 9. Drugi playbook (`playbooks/update.yml`) — zadania inline
@@ -419,7 +577,7 @@ ansible rpi -m apt -a "name=tree state=present" --become   # zainstaluj pakiet a
 | **Zmienne** | wartości do wstawienia `{{ }}` | `defaults/`, `group_vars/` |
 | **Become** | podniesienie uprawnień (sudo) | `become: true` |
 | **Idempotencja** | brak zmian, gdy stan OK | `changed: false` |
-| **Handlers** | zadania odpalane "na powiadomienie" | *(jeszcze nie masz)* |
+| **Handlers** | zadania odpalane "na powiadomienie" | `roles/identity/handlers/main.yml` |
 
 ---
 
@@ -436,8 +594,10 @@ Kolejność nauki, którą polecam — każdy krok bazuje na Twoich plikach:
    idempotencję na własnej skórze.
 4. **Wdróż klucze SSH** (README, "Next steps") — pozbędziesz się pytań o hasło
    i zrozumiesz, jak zmienne połączenia działają w `group_vars`.
-5. **Poznaj handlery** — wzorzec "zmień plik konfiguracyjny → zrestartuj
-   usługę, ale tylko jeśli coś się zmieniło". Naturalny następny temat.
+5. **Przeczytaj rolę `identity`** (sekcja 8e) — masz w niej handlery, `validate`,
+   `delegate_to`, `run_once` i `serial: 1` naraz, na działającym przykładzie.
+   Wzorzec "zmień plik konfiguracyjny → zrestartuj usługę, ale tylko jeśli coś
+   się zmieniło" jest tam użyty trzy razy, z trzema różnymi handlerami.
 
 Praktyczne rozszerzenie tego wprowadzenia: [demo-obciazenie.md](demo-obciazenie.md)
 — pokazuje `host_vars` (zmienne per host), składanie komendy przez `{% if %}` i
@@ -447,6 +607,6 @@ Oficjalna dokumentacja (bardzo dobra): <https://docs.ansible.com/ansible/latest/
 
 ---
 
-*Ten dokument opisuje stan repo z dnia jego utworzenia. Jak dodasz nowe role
-lub playbooki, dopisz je tutaj — dokument najlepiej uczy, gdy odzwierciedla
-realny projekt.*
+*Aktualizowany 2026-08-30: dopisany rozdział 8e (rola `identity`), odświeżone drzewo
+projektu w rozdziale 3. Jak dodasz nowe role lub playbooki, dopisz je tutaj —
+dokument najlepiej uczy, gdy odzwierciedla realny projekt.*
