@@ -45,6 +45,23 @@
         create_home: false
         state: present
 
+    # DLACZEGO reszta bloku jest wyłączona w trybie próbnym:
+    # `get_url` w --check raportuje "changed", ale pliku NIE pobiera. Kolejne
+    # zadanie nie ma więc czego rozpakować i bieg kończy się czerwonym
+    # "Source ... does not exist" — błędem, którego w prawdziwym biegu nie ma.
+    # To nie jest wada roli, tylko granica trybu --check: zadanie zależne od
+    # efektu poprzedniego widzi stan sprzed niego. Zamiast produkować mylący
+    # błąd, mówimy wprost, co by się stało.
+    - name: Tryb próbny — powiedz, co zrobiłby prawdziwy bieg
+      ansible.builtin.debug:
+        msg: >-
+          --check: pobrałbym node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}.tar.gz,
+          zweryfikował sumą z sha256sums.txt, zainstalował binarkę do {{ node_exporter_bin }},
+          zapisał jednostkę {{ node_exporter_unit }} i wystartował usługę.
+          Kroki pobrania i instalacji są tu POMIJANE — w trybie próbnym plik
+          naprawdę nie powstaje. Uruchom bez --check, żeby to wykonać.
+      when: ansible_check_mode
+
     - name: Pobierz archiwum i zweryfikuj sumą kontrolną wydania
       # checksum wskazuje na sha256sums.txt z tego samego wydania — Ansible sam
       # znajdzie w nim wiersz pasujący do nazwy pliku. Bez tego pobieralibyśmy
@@ -55,6 +72,7 @@
         checksum: "sha256:{{ node_exporter_release_base }}/sha256sums.txt"
         mode: "0644"
       register: node_exporter_download
+      when: not ansible_check_mode
 
     - name: Rozpakuj do katalogu tymczasowego
       ansible.builtin.unarchive:
@@ -62,6 +80,7 @@
         dest: /tmp
         remote_src: true
         creates: "/tmp/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}/node_exporter"
+      when: not ansible_check_mode
 
     - name: Zainstaluj binarkę
       ansible.builtin.copy:
@@ -71,6 +90,7 @@
         owner: "{{ node_exporter_user }}"
         group: "{{ node_exporter_user }}"
         mode: "0755"
+      when: not ansible_check_mode
       notify: restart node_exporter
 
     - name: Jednostka systemd
@@ -96,12 +116,14 @@
 
           [Install]
           WantedBy=multi-user.target
+      when: not ansible_check_mode
       notify: restart node_exporter
 
     - name: Sprzątnij pliki tymczasowe
       ansible.builtin.file:
         path: "{{ item }}"
         state: absent
+      when: not ansible_check_mode
       loop:
         - "/tmp/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}.tar.gz"
         - "/tmp/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}"
@@ -110,15 +132,20 @@
 # play, a swiezo zapisana jednostka musi byc widoczna dla systemd juz teraz —
 # inaczej to zadanie nie znajdzie uslugi i bieg konczy sie bledem na maszynie,
 # na ktorej wlasnie poprawnie zainstalowalismy binarke.
+# Warunek: w trybie próbnym na maszynie, która binarki NIE ma, jednostka jeszcze
+# nie istnieje — systemd zgłosiłby "Could not find the requested service".
+# Przy adopcji (binarka jest) zadanie działa normalnie, także w --check.
 - name: Usługa node_exporter włączona i uruchomiona
   ansible.builtin.systemd:
     name: "{{ node_exporter_service }}"
     state: started
     enabled: true
     daemon_reload: true
+  when: node_exporter_binary.stat.exists or not ansible_check_mode
 
 - name: Potwierdź, że port faktycznie odpowiada
   ansible.builtin.wait_for:
     port: "{{ node_exporter_port }}"
     host: 127.0.0.1
     timeout: 10
+  when: node_exporter_binary.stat.exists or not ansible_check_mode
