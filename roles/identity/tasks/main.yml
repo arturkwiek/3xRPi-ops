@@ -177,24 +177,71 @@
     - identity_needs_work | bool
     - fleet_regenerate_host_keys | bool
   block:
-    - name: Find the cloned host keys
-      ansible.builtin.find:
-        paths: /etc/ssh
-        patterns: "ssh_host_*"
-      register: identity_host_keys
+    # NAJNIEBEZPIECZNIEJSZY FRAGMENT CALEGO REPO i dlatego jest opakowany.
+    #
+    # `ssh-keygen -A` tworzy WYLACZNIE brakujace klucze — nie podmienia
+    # istniejacych. Zeby je wymienic, trzeba je najpierw skasowac, a to otwiera
+    # okno, w ktorym maszyna nie ma zadnego klucza hosta. Gdyby bieg przerwal
+    # sie wlasnie wtedy (zerwane Wi-Fi, Ctrl+C, blad), a plyta zostala potem
+    # zrestartowana, sshd nie wstanie. To maszyna BEZGLOWA i tylko na Wi-Fi,
+    # wiec nie byloby drogi powrotu poza monitorem i klawiatura.
+    #
+    # Dzialajacy sshd trzyma swoje klucze w pamieci, wiec samo skasowanie
+    # plikow nie zrywa biezacego polaczenia — grozny jest dopiero restart.
+    # Stad: generacja, potem TWARDA weryfikacja, a w razie czego rescue.
+    - name: Zabezpieczona wymiana kluczy hosta
+      block:
+        - name: Find the cloned host keys
+          ansible.builtin.find:
+            paths: /etc/ssh
+            patterns: "ssh_host_*"
+          register: identity_host_keys
 
-    - name: Remove them
-      ansible.builtin.file:
-        path: "{{ item.path }}"
-        state: absent
-      loop: "{{ identity_host_keys.files }}"
-      loop_control:
-        label: "{{ item.path }}"
+        - name: Remove them
+          ansible.builtin.file:
+            path: "{{ item.path }}"
+            state: absent
+          loop: "{{ identity_host_keys.files }}"
+          loop_control:
+            label: "{{ item.path }}"
 
-    - name: Generate a fresh set
-      ansible.builtin.command: ssh-keygen -A
-      changed_when: true
-      notify: restart sshd
+        - name: Generate a fresh set
+          ansible.builtin.command: ssh-keygen -A
+          changed_when: true
+
+        - name: Sprawdz, ze klucze naprawde powstaly
+          ansible.builtin.stat:
+            path: /etc/ssh/ssh_host_ed25519_key
+          register: identity_new_hostkey
+
+        - name: Przerwij, jesli ich nie ma — NIE restartuj sshd bez kluczy
+          ansible.builtin.fail:
+            msg: >-
+              ssh-keygen -A nie wygenerowal /etc/ssh/ssh_host_ed25519_key.
+              Klucze hosta zostaly usuniete i NIE odtworzone. NIE RESTARTUJ tej
+              plyty ani sshd — dzialajacy demon trzyma jeszcze stare klucze
+              w pamieci, wiec masz otwarta droge, zeby to naprawic recznie:
+              sudo ssh-keygen -A && sudo systemctl restart ssh
+          when: not identity_new_hostkey.stat.exists
+
+        - name: Wszystko gotowe — dopiero teraz mozna przeladowac sshd
+          ansible.builtin.debug:
+            msg: "Nowy komplet kluczy hosta na miejscu."
+          changed_when: true
+          notify: restart sshd
+
+      rescue:
+        - name: RATUNEK — sprobuj odtworzyc klucze jeszcze raz
+          ansible.builtin.command: ssh-keygen -A
+          changed_when: true
+
+        - name: Powiedz wprost, co sie stalo i co zrobic
+          ansible.builtin.fail:
+            msg: >-
+              Wymiana kluczy hosta na {{ inventory_hostname }} przerwala sie.
+              Sprobowalem odtworzyc je ponownie. ZANIM cokolwiek zrestartujesz,
+              sprawdz z innej powloki:
+              ssh mwd@{{ ansible_host }} "ls -l /etc/ssh/ssh_host_*"
 
 - name: Record that this board has been individualised
   ansible.builtin.copy:
@@ -206,12 +253,26 @@
     mode: "0644"
   when: identity_needs_work | bool
 
+# Komunikat musi odpowiadac temu, co rola FAKTYCZNIE zrobila. Do 30-08 mowil
+# o zmianie adresu wynikajacej z nowego machine-id — a odkad
+# fleet_regenerate_machine_id jest domyslnie false, ta zmiana nie zachodzi
+# i ostrzeganie o niej wysylaloby czlowieka szukac plyty bez powodu.
 - name: Say what happens next
   ansible.builtin.debug:
     msg: >-
-      {{ inventory_hostname }} is now {{ fleet_hostname }}.
-      A fresh machine-id means a fresh DHCP DUID, so this board may come back
-      on a DIFFERENT address after the reboot. Find it again with
-      ~/3xRPi/scripts/find_pi.sh, and clear the stale host key locally with
-      ssh-keygen -R {{ ansible_host | default(inventory_hostname) }}.
+      {{ inventory_hostname }} nazywa sie teraz {{ fleet_hostname }}.
+      {% if fleet_regenerate_host_keys | bool %}
+      Klucze hosta SSH zostaly wymienione, wiec Twoj lokalny known_hosts ma juz
+      nieaktualny wpis — usun go:
+      ssh-keygen -R {{ ansible_host | default(inventory_hostname) }}
+      {% endif %}
+      {% if fleet_regenerate_machine_id | bool %}
+      UWAGA: machine-id zostal wygenerowany od nowa, wiec zmienil sie DUID DHCP
+      i plyta moze wrocic pod INNYM adresem. Szukaj jej: ~/3xRPi/scripts/find_pi.sh
+      {% else %}
+      machine-id NIE byl ruszany, wiec DUID DHCP zostaje ten sam i plyta powinna
+      wrocic pod tym samym adresem ({{ ansible_host | default('brak') }}).
+      {% endif %}
+      Restart nastapi automatycznie, bo zmiana nazwy hosta wchodzi w zycie
+      dopiero po nim.
   when: identity_needs_work | bool
