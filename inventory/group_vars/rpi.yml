@@ -5,3 +5,16 @@ ansible_python_interpreter: /usr/bin/python3
 # No ansible_ssh_private_key_file yet — auth is by password (ask_pass=True in
 # ansible.cfg). Once you deploy keys, drop the password prompts and point this
 # at the private key instead.
+
+# --- Nazwy hostow nadawane przez role identity ---
+#
+# Docelowo: MWDRPi-1 / MWDRPi-2 / MWDRPi-3. Wyliczane z aliasu inwentarza,
+# zeby wartosc byla w JEDNYM miejscu i sama sie rozszerzala na kolejne plyty:
+#   rpi-01 -> 1,  rpi-02 -> 2,  rpi-03 -> 3,  rpi-10 -> 10
+# Wyrazenie zdejmuje przedrostek "rpi-" wraz z wiodacymi zerami.
+#
+# UWAGA, swiadoma konsekwencja: alias inwentarza (rpi-01) przestaje byc
+# identyczny z nazwa hosta (MWDRPi-1). Etykiety `host` w prometheus.yml oraz
+# tabela MAC-ow w dokumentacji nadal uzywaja ALIASU — i tak ma zostac, bo to
+# one wiaza sie z MAC-iem plyty. Mapowanie: rpi-0N <-> MWDRPi-N.
+fleet_hostname: "MWDRPi-{{ inventory_hostname | regex_replace('^rpi-0*', '') }}"

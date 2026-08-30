@@ -26,7 +26,7 @@ playbooks/
 roles/
   baseline/       pakiety, strefa czasowa, unattended-upgrades
   node_exporter/  pilnuje, żeby usługa :9100 chodziła   ← UWAGA: nie instaluje, patrz niżej
-  identity/       hostname, machine-id, klucze hosta, konto admina  ← 207 linii, najzawilsza
+  identity/       hostname (MWDRPi-1/-2/-3), klucze hosta, konto admina  ← najzawilsza
   app/            pusty szkielet, celowo niewpięty w site.yml
 ```
 

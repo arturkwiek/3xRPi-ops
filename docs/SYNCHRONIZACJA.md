@@ -53,7 +53,7 @@ ansible-playbook playbooks/identity.yml --limit rpi-01 --check --diff
 ```
 
 Czytasz to jak listę zamiarów. Powinieneś zobaczyć zamiar utworzenia `~/.ssh`,
-wstawienia klucza publicznego do `authorized_keys`, ustawienia nazwy hosta na `rpi-01`
+wstawienia klucza publicznego do `authorized_keys`, ustawienia nazwy hosta na **`MWDRPi-1`**
 i dopisania `preserve_hostname: true` do cloud-inita.
 
 **Nie zdziw się, że lista jest krótsza, niż się spodziewasz.** W trybie `--check`
@@ -77,7 +77,11 @@ ansible-playbook playbooks/identity.yml --limit rpi-01
 1. Konto `mwd` dostaje Twój klucz publiczny (`~/.ssh/id_ed25519_rpi.pub`).
 2. `sshd_config` dostaje `PubkeyAuthentication yes`. Plik jest **walidowany przed
    zapisem** (`sshd -t`), więc literówka nie zamknie Ci dostępu.
-3. Nazwa hosta zmienia się z `MWDRPi` na `rpi-01`.
+3. Nazwa hosta zmienia się z `MWDRPi` na **`MWDRPi-1`**. Docelowy schemat to
+   `MWDRPi-1` / `MWDRPi-2` / `MWDRPi-3`, wyliczany z aliasu inwentarza w
+   `inventory/group_vars/rpi.yml`. **Alias (`rpi-01`) i nazwa hosta (`MWDRPi-1`)
+   są celowo różne** — alias wiąże się z MAC-iem płyty i to jego używają etykiety
+   `host` w Prometheusie.
 4. Klucze hosta SSH są generowane od nowa.
 5. Handler `reboot board` restartuje płytę, a Ansible czeka na jej powrót (do 300 s).
 
@@ -96,7 +100,15 @@ ssh-keygen -R 192.168.0.170
 ssh -i ~/.ssh/id_ed25519_rpi mwd@192.168.0.170 hostnamectl --static
 ```
 
-**Warunek przerwania:** jeśli druga komenda pyta o hasło albo nie zwraca `rpi-01`,
+Mapowanie, które warto mieć przed oczami przy kolejnych etapach:
+
+| Alias inwentarza | Nazwa hosta po `identity` | MAC płyty | Adres |
+|---|---|---|---|
+| `rpi-01` | `MWDRPi-1` | `88:a2:9e:27:38:7a` | `.170` |
+| `rpi-02` | `MWDRPi-2` | `88:a2:9e:27:39:49` | `.172` |
+| `rpi-03` | `MWDRPi-3` | `88:a2:9e:27:2c:be` | `.100` |
+
+**Warunek przerwania:** jeśli druga komenda pyta o hasło albo nie zwraca `MWDRPi-1`,
 zatrzymaj się. Nie rób etapu 3 na kolejnych płytach, dopóki na pierwszej nie działa —
 bo wtedy popełniłbyś ten sam błąd trzy razy.
 

@@ -24,8 +24,11 @@ fleet_admin_user: mwd
 #   ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_rpi -C "3xRPi fleet"
 fleet_admin_pubkey: "~/.ssh/id_ed25519_rpi.pub"
 
-# Hostname to set. Defaults to the inventory alias, so alias == hostname ==
-# the sticker on the board: rpi-01 / rpi-02 / rpi-03.
+# Hostname to set. Domyslnie alias inwentarza, ale dla TEJ floty jest nadpisane
+# w inventory/group_vars/rpi.yml na MWDRPi-1 / MWDRPi-2 / MWDRPi-3 — decyzja
+# uzytkownika z 30-08, zeby nazwy zostaly w rodzinie "MWDRPi", a nie przechodzily
+# na schemat aliasow. Alias (rpi-0N) i nazwa hosta (MWDRPi-N) sa wiec ROZNE:
+# alias wiaze sie z MAC-iem plyty i tego uzywaja etykiety `host` w Prometheusie.
 fleet_hostname: "{{ inventory_hostname }}"
 
 # Individualisation steps. Each is guarded by the stamp file below, so a

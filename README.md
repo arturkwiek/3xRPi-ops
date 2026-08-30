@@ -66,7 +66,7 @@ keys — and different in none of the ways that help.
 | What | Why it matters |
 |---|---|
 | one admin account (`mwd`) with a deployed SSH key | one login method for the whole fleet, no more password prompts |
-| hostname `rpi-01` / `rpi-02` / `rpi-03` | alias == hostname == the sticker on the board |
+| hostname **`MWDRPi-1` / `MWDRPi-2` / `MWDRPi-3`** | tells the boards apart from the inside, which `MWDRPi` on all three does not. Set in `inventory/group_vars/rpi.yml` as `fleet_hostname`, derived from the alias (`rpi-0N` -> `MWDRPi-N`). **Note the alias and the hostname are deliberately different**: the alias binds to the board MAC and is what `host` labels in `prometheus.yml` use |
 | fresh `/etc/machine-id` per board | systemd derives its **DHCP DUID** from it; clones present one identity to the router and can fight over a single lease |
 | fresh `/etc/ssh/ssh_host_*` per board | a `dd` clone copies these, so today one key answers under three addresses |
 
