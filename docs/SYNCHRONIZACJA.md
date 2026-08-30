@@ -164,8 +164,24 @@ Po tym etapie sprawdź w Prometheusie, czy oba cele są `up`:
 ansible-playbook playbooks/update.yml --limit rpi-02
 ```
 
-Ta maszyna ma **131 pakietów do aktualizacji** i nie ma `pip`. `update.yml` robi
-`apt update` + `upgrade: safe`, a restart jest opcjonalny:
+> **Sprawdź to najpierw — stan mógł się zmienić bez Ciebie.** Pomiar 131 pakietów
+> pochodzi z 30-08 00:07, a `unattended-upgrades` jest aktywne na wszystkich trzech
+> płytach. Tego samego dnia po południu rpi-02 meldowała już `0 updates can be applied
+> immediately` **i `*** System restart required ***`** — czyli najpewniej połatała się
+> sama i czeka wyłącznie na restart. Jedna komenda rozstrzyga:
+>
+> ```bash
+> ssh mwd@192.168.0.172 'apt list --upgradable 2>/dev/null | grep -c upgradable; uptime -s'
+> ```
+>
+> Jeśli wyjdzie `0`, pomiń `update.yml` i zrób sam restart:
+>
+> ```bash
+> ansible-playbook playbooks/reboot.yml --limit rpi-02
+> ```
+
+Jeśli aktualizacje faktycznie czekają: `update.yml` robi `apt update` + `upgrade: safe`,
+a restart jest opcjonalny:
 
 ```bash
 ansible-playbook playbooks/update.yml --limit rpi-02 -e reboot_if_required=true

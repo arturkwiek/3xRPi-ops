@@ -1,0 +1,71 @@
+---
+# Restart floty — po jednej płycie i tylko wtedy, gdy system o to prosi.
+#
+#   ansible-playbook playbooks/reboot.yml                 # tylko te, które proszą
+#   ansible-playbook playbooks/reboot.yml -e force=true   # wszystkie, bezwarunkowo
+#   ansible-playbook playbooks/reboot.yml --limit rpi-02  # jedna sztuka
+#   ansible-playbook playbooks/reboot.yml --check         # kto by poszedł, bez restartu
+#
+# Dlaczego playbook, a nie `ansible rpi -m reboot --become`:
+#
+#   1. `serial: 1` — jednolinijkowiec restartuje WSZYSTKIE TRZY naraz. Tutaj
+#      idzie płyta po płycie, więc monitoring nigdy nie traci całej floty i
+#      widać, która sztuka wróciła, a która nie.
+#   2. Warunek — restartuje tylko to, co ma /var/run/reboot-required. Drugi bieg
+#      pod rząd nic nie robi. To jest idempotencja zastosowana do restartu.
+#   3. Potwierdzenie — po powrocie odczytuje `uptime -s`, więc masz dowód, że
+#      płyta faktycznie wstała, a nie tylko że Ansible przestał czekać.
+#
+# UWAGA o adresach: moduł `reboot` czeka, aż host wróci POD TYM SAMYM adresem.
+# W tej sieci adresy pochodzą z DHCP i rozjechały się cztery razy w miesiąc.
+# Jeśli płyta wróci gdzie indziej, zadanie skończy się timeoutem — to nie jest
+# awaria płyty, tylko utrata adresu. Wtedy: ~/3xRPi/scripts/find_pi.sh
+- name: Restart floty RPi
+  hosts: rpi
+  become: true
+  serial: 1
+  vars:
+    force: false
+
+  tasks:
+    - name: Sprawdź, czy system prosi o restart
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required_file
+
+    - name: Powiedz, co się zaraz stanie i dlaczego
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'restart WYMAGANY — jest /var/run/reboot-required'
+             if reboot_required_file.stat.exists
+             else ('restart WYMUSZONY przez -e force=true' if force | bool
+                   else 'pomijam — system nie prosi o restart') }}
+
+    - name: Odczytaj czas startu sprzed restartu
+      ansible.builtin.command: uptime -s
+      register: booted_before
+      changed_when: false
+
+    - name: Restartuj
+      ansible.builtin.reboot:
+        msg: "Restart z playbooks/reboot.yml (3xRPi-ops)"
+        reboot_timeout: 300
+        post_reboot_delay: 10
+      when: reboot_required_file.stat.exists or (force | bool)
+
+    - name: Odczytaj czas startu po restarcie
+      ansible.builtin.command: uptime -s
+      register: booted_after
+      changed_when: false
+      when: reboot_required_file.stat.exists or (force | bool)
+
+    # Dowód, że płyta naprawdę wstała: czas startu MUSI być późniejszy niż przed.
+    # Bez tego "zadanie zakończone sukcesem" znaczy tylko tyle, że Ansible
+    # doczekał się połączenia — a to nie to samo.
+    - name: Potwierdź, że to naprawdę był restart
+      ansible.builtin.debug:
+        msg: >-
+          start przed: {{ booted_before.stdout }} → po: {{ booted_after.stdout }}
+          {{ '✔ wstała' if booted_after.stdout != booted_before.stdout
+             else '✘ czas startu się nie zmienił — restart NIE nastąpił' }}
+      when: booted_after.stdout is defined

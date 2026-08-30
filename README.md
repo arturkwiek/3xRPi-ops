@@ -149,6 +149,11 @@ ansible-playbook playbooks/site.yml
 ansible-playbook playbooks/update.yml
 ansible-playbook playbooks/update.yml -e reboot_if_required=true
 
+# reboot — one board at a time, and only those that ask for it
+ansible-playbook playbooks/reboot.yml
+ansible-playbook playbooks/reboot.yml -e force=true      # all of them, unconditionally
+ansible-playbook playbooks/reboot.yml --limit rpi-02     # just one
+
 # monitoring demo: put a DIFFERENT load on each Pi for 5 min (async, self-stops)
 ansible-playbook playbooks/stress.yml
 ansible-playbook playbooks/stress.yml -e duration=120   # shorter

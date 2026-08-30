@@ -21,6 +21,7 @@ playbooks/
   site.yml       CO: baseline + node_exporter          ← konfiguracja stała
   identity.yml   CO: nadaj płytom tożsamość            ← jednorazowy, NIGDY nieuruchomiony
   update.yml     CO: apt update + safe upgrade
+  reboot.yml     CO: restart po jednej płycie, tylko gdy system o to prosi
   stress.yml     CO: sztuczne obciążenie pod demo monitoringu
 roles/
   baseline/       pakiety, strefa czasowa, unattended-upgrades
@@ -50,6 +51,7 @@ ansible-playbook playbooks/site.yml --check --diff     # 2. co BY zrobił, nic n
 ansible-playbook playbooks/site.yml                    # 3. to samo na ostro
 ansible-playbook playbooks/site.yml --limit rpi-01     # 4. tylko jedna maszyna
 ansible-playbook playbooks/update.yml                  # 5. apt update + upgrade
+ansible-playbook playbooks/reboot.yml                  # 6. restart tych, ktore o to prosza
 ```
 
 Każdy bieg zapyta o **dwa** hasła: `SSH password` i `BECOME password`. Oba to hasło
