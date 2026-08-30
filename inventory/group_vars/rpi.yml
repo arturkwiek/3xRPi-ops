@@ -2,9 +2,10 @@
 # Connection settings for the whole fleet.
 ansible_user: mwd
 ansible_python_interpreter: /usr/bin/python3
-# No ansible_ssh_private_key_file yet — auth is by password (ask_pass=True in
-# ansible.cfg). Once you deploy keys, drop the password prompts and point this
-# at the private key instead.
+# Klucz prywatny jest ustawiony globalnie w ansible.cfg (private_key_file),
+# a nie tutaj — dotyczy calej floty, wiec nie ma powodu powtarzac go per grupa.
+# Uwierzytelnianie haslem nadal DZIALA jako droga awaryjna: rola identity
+# celowo nie wylaczyla PasswordAuthentication.
 
 # --- Nazwy hostow nadawane przez role identity ---
 #
