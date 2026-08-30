@@ -2,10 +2,19 @@
 # Per-machine identity for a fleet built from cloned SD cards.
 #
 # The clones are the problem this role exists to solve: every board flashed
-# from one image shares its hostname, its /etc/machine-id and its SSH host
-# keys. That makes the fleet impossible to tell apart from the inside, and
-# (via machine-id -> systemd DHCP DUID) plausibly makes the boards fight over
-# a single DHCP lease.
+# from one image shares its hostname and its SSH host keys. That makes the
+# fleet impossible to tell apart from the inside.
+#
+# CORRECTION 2026-08-30 — machine-id is NOT part of that problem, measured:
+#   rpi-01  0fe2238027a04645a52a98b371f80dc8
+#   rpi-02  8fc27cf466154bf09b46c3cf0291fa79
+#   rpi-03  ea6797d127414154b359d0b9baf91ae4
+# All three differ, including the two boards running clones of one card. The
+# Ubuntu image ships /etc/machine-id EMPTY and systemd generates it on first
+# boot, so even a dd clone gets its own. The earlier theory -- that the boards
+# share a DHCP DUID and fight over one lease -- is therefore dead, and the
+# cause of the four address drifts is still unidentified. MAC reservations on
+# the router are the only known fix. Full data: ~/3xRPi/docs/POROWNANIE-FLOTY-2026-08-30.md
 
 # The one admin account used across the whole fleet.
 fleet_admin_user: mwd
@@ -21,7 +30,14 @@ fleet_hostname: "{{ inventory_hostname }}"
 
 # Individualisation steps. Each is guarded by the stamp file below, so a
 # second run is a no-op rather than a fresh round of key churn.
-fleet_regenerate_machine_id: true
+# OFF since 2026-08-30. Regenerating machine-id would change the DHCP DUID and
+# bring the board back on a different address -- i.e. it would CAUSE a drift
+# rather than fix one, while solving nothing (see the correction above).
+# Only turn this on if you have re-flashed a card and genuinely want a new id.
+fleet_regenerate_machine_id: false
+
+# Still on: a dd clone really does copy /etc/ssh/ssh_host_* , so without this
+# two boards present the same host key and known_hosts cannot tell them apart.
 fleet_regenerate_host_keys: true
 
 # Marker recording that this board has been individualised. Bump the token to

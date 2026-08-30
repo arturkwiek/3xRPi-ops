@@ -130,9 +130,19 @@
       {{ (identity_stamp_raw.content is not defined)
          or ((identity_stamp_raw.content | b64decode).strip() != fleet_identity_token) }}
 
-# machine-id is what systemd derives its default DHCP DUID from. Clones share
-# it, so the DHCP server sees one client where there are three boards — the
-# most plausible explanation for the address drift this fleet keeps hitting.
+# machine-id is what systemd derives its default DHCP DUID from.
+#
+# This block is OFF by default since 2026-08-30 and the reason matters: the
+# assumption it was written on turned out to be false. Measured on all three
+# boards, the machine-ids are DIFFERENT (0fe22380… / 8fc27cf4… / ea6797d1…),
+# including the two running clones of one card — the Ubuntu image ships the
+# file empty and systemd fills it on first boot. So the boards never shared a
+# DUID, this was not the cause of the drifts, and running this block would
+# hand a board a NEW address instead of a stable one.
+#
+# Kept, not deleted: after re-flashing a card from an image that already has
+# a populated /etc/machine-id, regeneration is the right thing to do. Enable
+# it deliberately with fleet_regenerate_machine_id=true for that one run.
 - name: Give this board its own machine-id
   when:
     - identity_needs_work | bool
